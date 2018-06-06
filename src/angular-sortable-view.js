@@ -3,21 +3,23 @@
 // angular-sortable-view v0.0.17 2017/12/26
 //
 
-;(function(window, angular){
+; (function(window, angular) {
 	'use strict';
 	/* jshint eqnull:true */
 	/* jshint -W041 */
 	/* jshint -W030 */
 
+	var LONG_TOUCH_DURATION = 700;
+
 	var module = angular.module('angular-sortable-view', []);
-	module.directive('svRoot', [function(){
-		function shouldBeAfter(elem, pointer, isGrid){
+	module.directive('svRoot', [function() {
+		function shouldBeAfter(elem, pointer, isGrid) {
 			return isGrid ? elem.x - pointer.x < 0 : elem.y - pointer.y < 0;
 		}
-		function getSortableElements(key){
+		function getSortableElements(key) {
 			return ROOTS_MAP[key];
 		}
-		function removeSortableElements(key){
+		function removeSortableElements(key) {
 			delete ROOTS_MAP[key];
 		}
 		function getCoords(rect) {
@@ -48,19 +50,19 @@
 
 		return {
 			restrict: 'A',
-			controller: ['$scope', '$attrs', '$interpolate', '$parse', function($scope, $attrs, $interpolate, $parse){
+			controller: ['$scope', '$attrs', '$interpolate', '$parse', function($scope, $attrs, $interpolate, $parse) {
 				var mapKey = $interpolate($attrs.svRoot)($scope) || $scope.$id;
 				if(!ROOTS_MAP[mapKey]) ROOTS_MAP[mapKey] = [];
 
-				var that         = this;
+				var that = this;
 				var candidates;  // set of possible destinations
 				var $placeholder;// placeholder element
 				var options;     // sortable options
 				var $helper;     // helper element - the one thats being dragged around with the mouse pointer
 				var $original;   // original element
 				var $target;     // last best candidate
-				var isGrid       = false;
-				var onSort       = $parse($attrs.svOnSort);
+				var isGrid = false;
+				var onSort = $parse($attrs.svOnSort);
 
 				// ----- hack due to https://github.com/angular/angular.js/issues/8044
 				$attrs.svOnStart = $attrs.$$element[0].attributes['sv-on-start'];
@@ -73,41 +75,41 @@
 				var onStart = $parse($attrs.svOnStart);
 				var onStop = $parse($attrs.svOnStop);
 
-				this.sortingInProgress = function(){
+				this.sortingInProgress = function() {
 					return sortingInProgress;
 				};
 
-				if($attrs.svGrid){ // sv-grid determined explicite
+				if($attrs.svGrid) { // sv-grid determined explicite
 					isGrid = $attrs.svGrid === "true" ? true : $attrs.svGrid === "false" ? false : null;
 					if(isGrid === null)
 						throw 'Invalid value of sv-grid attribute';
 				}
-				else{
+				else {
 					// check if at least one of the lists have a grid like layout
-					$scope.$watchCollection(function(){
+					$scope.$watchCollection(function() {
 						return getSortableElements(mapKey);
-					}, function(collection){
+					}, function(collection) {
 						isGrid = false;
-						var array = collection.filter(function(item){
+						var array = collection.filter(function(item) {
 							return !item.container;
-						}).map(function(item){
+						}).map(function(item) {
 							return {
 								part: item.getPart().id,
 								y: item.element[0].getBoundingClientRect().top
 							};
 						});
 						var dict = Object.create(null);
-						array.forEach(function(item){
+						array.forEach(function(item) {
 							if(dict[item.part])
 								dict[item.part].push(item.y);
 							else
 								dict[item.part] = [item.y];
 						});
-						Object.keys(dict).forEach(function(key){
+						Object.keys(dict).forEach(function(key) {
 							dict[key].sort();
-							dict[key].forEach(function(item, index){
-								if(index < dict[key].length - 1){
-									if(item > 0 && item === dict[key][index + 1]){
+							dict[key].forEach(function(item, index) {
+								if(index < dict[key].length - 1) {
+									if(item > 0 && item === dict[key][index + 1]) {
 										isGrid = true;
 									}
 								}
@@ -116,22 +118,38 @@
 					});
 				}
 
-				this.$moveUpdate = function(opts, mouse, svElement, svOriginal, svPlaceholder, originatingPart, originatingIndex){
+				//limited scrolling - only works in the sv-part
+				var stopScrolling = false;
+				var scrollTimeout = null;
+
+				function scrollView(svPartView, step, delay) {
+					svPartView.scrollTop += step;
+					if(!stopScrolling && !scrollTimeout) {
+						scrollTimeout = setTimeout(function () {
+							scrollTimeout = null;
+							scrollView(svPartView, step, 0);
+						}, delay);
+					}
+				}
+
+				this.$moveUpdate = function(opts, mouse, svElement, svOriginal, svPlaceholder, originatingPart, originatingIndex) {
 					var svRect = svElement[0].getBoundingClientRect();
+					var svPartView = originatingPart.element[0];
+
 					if(opts.tolerance === 'element')
 						mouse = {
-							x: ~~(svRect.left + svRect.width/2),
-							y: ~~(svRect.top + svRect.height/2)
+							x: ~~(svRect.left + svRect.width / 2),
+							y: ~~(svRect.top + svRect.height / 2)
 						};
 
 					sortingInProgress = true;
 					candidates = [];
-					if(!$placeholder){
-						if(svPlaceholder){ // custom placeholder
+					if(!$placeholder) {
+						if(svPlaceholder) { // custom placeholder
 							$placeholder = svPlaceholder.clone();
 							$placeholder.removeClass('ng-hide');
 						}
-						else{ // default placeholder
+						else { // default placeholder
 							$placeholder = svOriginal.clone();
 							$placeholder.addClass('sv-visibility-hidden');
 							$placeholder.addClass('sv-placeholder');
@@ -143,7 +161,7 @@
 
 						svOriginal.after($placeholder);
 						if (!originatingPart.copyMode) {
-							svOriginal.addClass('ng-hide');
+						svOriginal.addClass('ng-hide');
 						}
 
 						// cache options, helper and original element reference
@@ -152,7 +170,7 @@
 						$helper = svElement;
 
 						onStart($scope, {
-							$helper: {element: $helper},
+							$helper: { element: $helper },
 							$part: originatingPart.model(originatingPart.scope),
 							$index: originatingIndex,
 							$item: originatingPart.model(originatingPart.scope)[originatingIndex]
@@ -161,14 +179,34 @@
 					}
 
 					// ----- move the element
+					var reposX = mouse.x + document.body.scrollLeft - mouse.offset.x * svRect.width;
+					var reposY = mouse.y + document.body.scrollTop - mouse.offset.y * svRect.height
+
 					$helper[0].reposition({
-						x: mouse.x + document.body.scrollLeft - mouse.offset.x*svRect.width,
-						y: mouse.y + document.body.scrollTop - mouse.offset.y*svRect.height
+						x: reposX,
+						y: reposY
 					});
 
+					var svPartViewRect = svPartView.getBoundingClientRect();
+					if(reposY < mouse.offset.y + svPartViewRect.top - svRect.height / 3) {
+						stopScrolling = false;
+						scrollView(svPartView, -10, 200);
+					} else if(reposY <= mouse.offset.y + svPartViewRect.top) {
+						stopScrolling = false;
+						scrollView(svPartView, -1, 200);
+					} else if(reposY > svPartViewRect.bottom - svRect.height + svRect.height / 3) {
+						stopScrolling = false;
+						scrollView(svPartView, 10, 200);
+					} else if(reposY >= svPartViewRect.bottom - svRect.height) {
+						stopScrolling = false;
+						scrollView(svPartView, 1, 200);
+					} else {
+						stopScrolling = true;
+					}
+
 					// ------ manage candidates
-					getSortableElements(mapKey).forEach(function(se, index){
-						if(opts.containment != null){
+					getSortableElements(mapKey).forEach(function(se, index) {
+						if(opts.containment != null) {
 							// TODO: optimize this since it could be calculated only once when the moving begins
 							if(
 								!elementMatchesSelector(se.element, opts.containment) &&
@@ -179,8 +217,8 @@
 						var seCoords = getCoords(rect);
 
 						var center = {
-							x: ~~(rect.left + rect.width/2),
-							y: ~~(rect.top + rect.height/2)
+							x: ~~(rect.left + rect.width / 2),
+							y: ~~(rect.top + rect.height / 2)
 						};
 
 						var centerHoriz = {
@@ -233,12 +271,12 @@
 						element: $placeholder,
 						placeholder: true
 					});
-					candidates.sort(function(a, b){
+					candidates.sort(function(a, b) {
 						return a.q - b.q;
 					});
 
-					candidates.forEach(function(cand, index){
-						if(index === 0 && !cand.placeholder && !cand.container){
+					candidates.forEach(function(cand, index) {
+						if(index === 0 && !cand.placeholder && !cand.container) {
 							$target = cand;
 							cand.element.addClass('sv-candidate');
 							if(cand.after)
@@ -246,7 +284,7 @@
 							else
 								insertElementBefore(cand.element, $placeholder);
 						}
-						else if(index === 0 && cand.container){
+						else if(index === 0 && cand.container) {
 							$target = cand;
 							cand.element.append($placeholder);
 						}
@@ -255,7 +293,8 @@
 					});
 				};
 
-				this.$drop = function(originatingPart, index, options){
+				this.$drop = function(originatingPart, index, options) {
+					stopScrolling = true;
 					if(!$placeholder) return;
 
 					if(options.revert && !($target && $target.view && $target.view.noRevert)){
@@ -266,10 +305,10 @@
 							Math.pow(helperRect.left - placeholderRect.left, 2)
 						);
 
-						var duration = +options.revert*distance/200; // constant speed: duration depends on distance
+						var duration = +options.revert * distance / 200; // constant speed: duration depends on distance
 						duration = Math.min(duration, +options.revert); // however it's not longer that options.revert
 
-						['-webkit-', '-moz-', '-ms-', '-o-', ''].forEach(function(prefix){
+						['-webkit-', '-moz-', '-ms-', '-o-', ''].forEach(function(prefix) {
 							if(typeof $helper[0].style[prefix + 'transition'] !== "undefined")
 								$helper[0].style[prefix + 'transition'] = 'all ' + duration + 'ms ease';
 						});
@@ -282,7 +321,7 @@
 					else
 						afterRevert();
 
-					function afterRevert(){
+					function afterRevert() {
 						sortingInProgress = false;
 						$placeholder.remove();
 						$helper.remove();
@@ -301,7 +340,7 @@
 							$item: originatingPart.model(originatingPart.scope)[index]
 						});
 
-						if($target){
+						if($target) {
 							$target.element.removeClass('sv-candidate');
 							var spliced = originatingPart.model(originatingPart.scope).splice(index, 1);
 							var targetIndex = $target.targetIndex;
@@ -328,13 +367,13 @@
 					}
 				};
 
-				this.addToSortableElements = function(se){
+				this.addToSortableElements = function(se) {
 					getSortableElements(mapKey).push(se);
 				};
-				this.removeFromSortableElements = function(se){
+				this.removeFromSortableElements = function(se) {
 					var elems = getSortableElements(mapKey);
 					var index = elems.indexOf(se);
-					if(index > -1){
+					if(index > -1) {
 						elems.splice(index, 1);
 						if(elems.length === 0)
 							removeSortableElements(mapKey);
@@ -344,21 +383,21 @@
 		};
 	}]);
 
-	module.directive('svPart', ['$parse', function($parse){
+	module.directive('svPart', ['$parse', function($parse) {
 		return {
 			restrict: 'A',
 			require: '^svRoot',
-			controller: ['$scope', function($scope){
+			controller: ['$scope', function($scope) {
 				$scope.$ctrl = this;
-				this.getPart = function(){
+				this.getPart = function() {
 					return $scope.part;
 				};
-				this.$drop = function(index, options){
+				this.$drop = function(index, options) {
 					$scope.$sortableRoot.$drop($scope.part, index, options);
 				};
 			}],
 			scope: true,
-			link: function($scope, $element, $attrs, $sortable){
+			link: function($scope, $element, $attrs, $sortable) {
 				if(!$attrs.svPart) throw new Error('no model provided');
 				var model = $parse($attrs.svPart);
 				if(!model.assign) throw new Error('model not assignable');
@@ -385,53 +424,60 @@
 					centerVariant: $attrs.svCenter || 'both',
 				};
 				$sortable.addToSortableElements(sortablePart);
-				$scope.$on('$destroy', function(){
+				$scope.$on('$destroy', function() {
 					$sortable.removeFromSortableElements(sortablePart);
 				});
 			}
 		};
 	}]);
 
-	module.directive('svElement', ['$parse', function($parse){
+	module.directive('svElement', ['$parse', function($parse) {
 		return {
 			restrict: 'A',
 			require: ['^svPart', '^svRoot'],
-			controller: ['$scope', function($scope){
+			controller: ['$scope', function($scope) {
 				$scope.$ctrl = this;
 			}],
-			link: function($scope, $element, $attrs, $controllers){
+			link: function($scope, $element, $attrs, $controllers) {
 				var sortableElement = {
 					element: $element,
 					getPart: $controllers[0].getPart,
-					getIndex: function(){
+					getIndex: function() {
 						return $scope.$index;
 					}
 				};
 				$controllers[1].addToSortableElements(sortableElement);
-				$scope.$on('$destroy', function(){
+				$scope.$on('$destroy', function() {
 					$controllers[1].removeFromSortableElements(sortableElement);
+					handle.off('touchstart', onTouchStart);
+					handle.off('mousedown', onMousedown);
 				});
 
 				var handle = $element;
-				handle.on('mousedown touchstart', onMousedown);
-				$scope.$watch('$ctrl.handle', function(customHandle){
-					if(customHandle){
-						handle.off('mousedown touchstart', onMousedown);
+				handle.on('mousedown', onMousedown);
+				handle.on('touchstart', onTouchStart);
+				handle.on('touchend', onTouchEnd);
+
+				$scope.$watch('$ctrl.handle', function(customHandle) {
+					if(customHandle) {
+						handle.off('touchstart', onTouchStart);
+						handle.off('mousedown', onMousedown);
 						handle = customHandle;
-						handle.on('mousedown touchstart', onMousedown);
+						handle.on('mousedown', onMousedown);
+						handle.on('touchstart', onTouchStart);
 					}
 				});
 
 				var helper;
-				$scope.$watch('$ctrl.helper', function(customHelper){
-					if(customHelper){
+				$scope.$watch('$ctrl.helper', function(customHelper) {
+					if(customHelper) {
 						helper = customHelper;
 					}
 				});
 
 				var placeholder;
-				$scope.$watch('$ctrl.placeholder', function(customPlaceholder){
-					if(customPlaceholder){
+				$scope.$watch('$ctrl.placeholder', function(customPlaceholder) {
+					if(customPlaceholder) {
 						placeholder = customPlaceholder;
 					}
 				});
@@ -439,9 +485,53 @@
 				var body = angular.element(document.body);
 				var html = angular.element(document.documentElement);
 
-				var moveExecuted;
+				var longTouchDetectionTimeout = null;
+				function onTouchStart(e) {
+					longTouchDetectionTimeout = setTimeout(onLongTouch, LONG_TOUCH_DURATION);
+					document.addEventListener('touchmove', onTouchMove);
+					document.addEventListener('touchend', onTouchEnd, {passive: false});
+				}
+				function onTouchEnd(e) {
 
-				function onMousedown(e){
+					// touch was canceled before a move
+					if(longTouchDetectionTimeout) {
+						clearTimeout(longTouchDetectionTimeout);
+						longTouchDetectionTimeout = null;
+					} else {
+						// no default action - it was our long touch that ended here
+						e.preventDefault();
+					}
+
+					$element.removeClass("sv-touch-move-enabled");
+					document.removeEventListener('touchmove', onTouchMove);
+					document.removeEventListener('touchend', onTouchEnd);
+				}
+				function onLongTouch() {
+					//long touch detected, prepare for move
+					longTouchDetectionTimeout = null;
+					document.removeEventListener('touchmove', onTouchMove);
+					document.addEventListener('touchmove', onTouchMove, { passive: false });
+					$element.addClass("sv-touch-move-enabled");
+				}
+				function onTouchMove(e) {
+
+					document.removeEventListener('touchmove', onTouchMove);
+					document.removeEventListener('touchend', onTouchEnd);
+
+					//moved before long touch
+					if(longTouchDetectionTimeout) {
+						clearTimeout(longTouchDetectionTimeout);
+						longTouchDetectionTimeout = null;
+						return;
+					}
+
+					// only now start dragging
+					e.preventDefault();
+					onMousedown(e, true);
+				}
+
+				var moveExecuted;
+				function onMousedown(e, runMouseMoveHandler) {
 					touchFix(e);
 
 					if($controllers[1].sortingInProgress()) return;
@@ -453,11 +543,13 @@
 					moveExecuted = false;
 					var opts = $parse($attrs.svElement)($scope);
 					opts = angular.extend({}, {
+						startX: e.clientX,
+						startY: e.clientY,
 						tolerance: 'pointer',
 						revert: 200,
 						containment: 'html'
 					}, opts);
-					if(opts.containment){
+					if(opts.containment) {
 						var containmentRect = closestElement.call($element, opts.containment)[0].getBoundingClientRect();
 					}
 
@@ -467,7 +559,7 @@
 
 					if(!helper) helper = $controllers[0].helper;
 					if(!placeholder) placeholder = $controllers[0].placeholder;
-					if(helper){
+					if(helper) {
 						clone = helper.clone();
 						clone.removeClass('ng-hide');
 						clone.css({
@@ -476,7 +568,7 @@
 						});
 						target.addClass('sv-visibility-hidden');
 					}
-					else{
+					else {
 						clone = target.clone();
 						clone.addClass('sv-helper').css({
 							'left': clientRect.left + document.body.scrollLeft + 'px',
@@ -485,14 +577,14 @@
 						});
 					}
 
-					clone[0].reposition = function(coords){
+					clone[0].reposition = function(coords) {
 						var targetLeft = coords.x;
 						var targetTop = coords.y;
 						var helperRect = clone[0].getBoundingClientRect();
 
 						var body = document.body;
 
-						if(containmentRect){
+						if(containmentRect) {
 							if(targetTop < containmentRect.top + body.scrollTop) // top boundary
 								targetTop = containmentRect.top + body.scrollTop;
 							if(targetTop + helperRect.height > containmentRect.top + body.scrollTop + containmentRect.height) // bottom boundary
@@ -507,52 +599,73 @@
 					};
 
 					var pointerOffset = {
-						x: (e.clientX - clientRect.left)/clientRect.width,
-						y: (e.clientY - clientRect.top)/clientRect.height
+						x: (e.clientX - clientRect.left) / clientRect.width,
+						y: (e.clientY - clientRect.top) / clientRect.height
 					};
+
 					html.addClass('sv-sorting-in-progress');
-					html.on('mousemove touchmove', onMousemove).on('mouseup touchend touchcancel', function mouseup(e){
-						html.off('mousemove touchmove', onMousemove);
-						html.off('mouseup touchend touchcancel', mouseup);
+					html.on('mousemove', onMousemove).on('mouseup touchend touchcancel', onMouseUp);
+					document.addEventListener('touchmove', onMousemove, { passive: false });
+
+					function onMouseUp(e) {
+						html.off('mousemove', onMousemove);
+						html.off('mouseup touchend touchcancel', onMouseUp);
+						document.removeEventListener('touchmove', onMousemove, { passive: false });
 						html.removeClass('sv-sorting-in-progress');
-						if(moveExecuted){
+						$element.removeClass("sv-touch-move-enabled");
+
+						if(moveExecuted) {
 							$controllers[0].$drop($scope.$index, opts);
 						}
 						$element.removeClass('sv-visibility-hidden');
-					});
+					};
 
 					// onMousemove(e);
-					function onMousemove(e){
+					function onMousemove(e) {
+
 						touchFix(e);
-						if(!moveExecuted){
+						if(!e.touches && !e.movementX && !e.movementY && !moveExecuted) {
+							return;
+						}
+
+						if(!moveExecuted && Math.sqrt(Math.pow(opts.startX - e.clientX, 2) + Math.pow(opts.startY - e.clientY, 2)) < 3) {
+							return;
+						}
+
+						if(!moveExecuted) {
 							$element.parent().prepend(clone);
 							moveExecuted = true;
 						}
+
 						$controllers[1].$moveUpdate(opts, {
 							x: e.clientX,
 							y: e.clientY,
 							offset: pointerOffset
 						}, clone, $element, placeholder, $controllers[0].getPart(), $scope.$index);
 					}
+
+					if(runMouseMoveHandler) {
+						onMousemove(e);
+					}
 				}
 			}
 		};
 	}]);
 
-	module.directive('svHandle', function(){
+	module.directive('svHandle', function() {
 		return {
 			require: '?^svElement',
-			link: function($scope, $element, $attrs, $ctrl){
+			link: function($scope, $element, $attrs, $ctrl) {
 				if($ctrl)
 					$ctrl.handle = $element.add($ctrl.handle); // support multiple handles
 			}
 		};
 	});
 
-	module.directive('svHelper', function(){
+	module.directive('svHelper', function() {
 		return {
 			require: ['?^svPart', '?^svElement'],
-			link: function($scope, $element, $attrs, $ctrl){
+			link: function($scope, $element, $attrs, $ctrl) {
 				$element.addClass('sv-helper').addClass('ng-hide');
 				if($ctrl[1])
 					$ctrl[1].helper = $element;
@@ -562,10 +675,10 @@
 		};
 	});
 
-	module.directive('svPlaceholder', function(){
+	module.directive('svPlaceholder', function() {
 		return {
 			require: ['?^svPart', '?^svElement'],
-			link: function($scope, $element, $attrs, $ctrl){
+			link: function($scope, $element, $attrs, $ctrl) {
 				$element.addClass('sv-placeholder').addClass('ng-hide');
 				if($ctrl[1])
 					$ctrl[1].placeholder = $element;
@@ -578,29 +691,29 @@
 	angular.element(document.head).append([
 		'<style>' +
 		'.sv-helper{' +
-			'position: fixed !important;' +
-			'z-index: 99999;' +
-			'margin: 0 !important;' +
+		'position: fixed !important;' +
+		'z-index: 99999;' +
+		'margin: 0 !important;' +
 		'}' +
 		'.sv-candidate{' +
 		'}' +
 		'.sv-placeholder{' +
-			// 'opacity: 0;' +
+		// 'opacity: 0;' +
 		'}' +
 		'.sv-sorting-in-progress{' +
-			'-webkit-user-select: none;' +
-			'-moz-user-select: none;' +
-			'-ms-user-select: none;' +
-			'user-select: none;' +
+		'-webkit-user-select: none;' +
+		'-moz-user-select: none;' +
+		'-ms-user-select: none;' +
+		'user-select: none;' +
 		'}' +
 		'.sv-visibility-hidden{' +
-			'visibility: hidden !important;' +
-			'opacity: 0 !important;' +
+		'visibility: hidden !important;' +
+		'opacity: 0 !important;' +
 		'}' +
 		'</style>'
 	].join(''));
 
-	function touchFix(e){
+	function touchFix(e) {
 		if(!('clientX' in e) && !('clientY' in e)) {
 			var touches = e.touches || e.originalEvent.touches;
 			if(touches && touches.length) {
@@ -611,11 +724,11 @@
 		}
 	}
 
-	function getPreviousSibling(element){
+	function getPreviousSibling(element) {
 		element = element[0];
 		if(element.previousElementSibling)
 			return angular.element(element.previousElementSibling);
-		else{
+		else {
 			var sib = element.previousSibling;
 			while(sib != null && sib.nodeType != 1)
 				sib = sib.previousSibling;
@@ -623,35 +736,35 @@
 		}
 	}
 
-	function insertElementBefore(element, newElement){
+	function insertElementBefore(element, newElement) {
 		var prevSibl = getPreviousSibling(element);
-		if(prevSibl.length > 0){
+		if(prevSibl.length > 0) {
 			prevSibl.after(newElement);
 		}
-		else{
+		else {
 			element.parent().prepend(newElement);
 		}
 	}
 
 	var dde = document.documentElement,
-	matchingFunction = dde.matches ? 'matches' :
-						dde.matchesSelector ? 'matchesSelector' :
-						dde.webkitMatches ? 'webkitMatches' :
-						dde.webkitMatchesSelector ? 'webkitMatchesSelector' :
+		matchingFunction = dde.matches ? 'matches' :
+			dde.matchesSelector ? 'matchesSelector' :
+				dde.webkitMatches ? 'webkitMatches' :
+					dde.webkitMatchesSelector ? 'webkitMatchesSelector' :
 						dde.msMatches ? 'msMatches' :
-						dde.msMatchesSelector ? 'msMatchesSelector' :
-						dde.mozMatches ? 'mozMatches' :
-						dde.mozMatchesSelector ? 'mozMatchesSelector' : null;
+							dde.msMatchesSelector ? 'msMatchesSelector' :
+								dde.mozMatches ? 'mozMatches' :
+									dde.mozMatchesSelector ? 'mozMatchesSelector' : null;
 	if(matchingFunction == null)
 		throw 'This browser doesn\'t support the HTMLElement.matches method';
 
-	function elementMatchesSelector(element, selector){
+	function elementMatchesSelector(element, selector) {
 		if(element instanceof angular.element) element = element[0];
 		if(matchingFunction !== null)
 			return element[matchingFunction](selector);
 	}
 
-	var closestElement = angular.element.prototype.closest || function (selector){
+	var closestElement = angular.element.prototype.closest || function(selector) {
 		var el = this[0].parentNode;
 		while(el !== document.documentElement && !el[matchingFunction](selector))
 			el = el.parentNode;
@@ -665,14 +778,14 @@
 	/*
 		Simple implementation of jQuery's .add method
 	 */
-	if(typeof angular.element.prototype.add !== 'function'){
-		angular.element.prototype.add = function(elem){
+	if(typeof angular.element.prototype.add !== 'function') {
+		angular.element.prototype.add = function(elem) {
 			var i, res = angular.element();
 			elem = angular.element(elem);
-			for(i=0;i<this.length;i++){
+			for(i = 0; i < this.length; i++) {
 				res.push(this[i]);
 			}
-			for(i=0;i<elem.length;i++){
+			for(i = 0; i < elem.length; i++) {
 				res.push(elem[i]);
 			}
 			return res;
