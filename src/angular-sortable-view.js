@@ -9,8 +9,6 @@
 	/* jshint -W041 */
 	/* jshint -W030 */
 
-	var LONG_TOUCH_DURATION = 700;
-
 	var module = angular.module('angular-sortable-view', []);
 	module.directive('svRoot', [function() {
 		function shouldBeAfter(elem, pointer, isGrid) {
@@ -484,10 +482,11 @@
 
 				var body = angular.element(document.body);
 				var html = angular.element(document.documentElement);
+                var opts = angular.extend({}, { delay: 0 }, $parse($attrs.svElement)($scope));
 
 				var longTouchDetectionTimeout = null;
-				function onTouchStart(e) {
-					longTouchDetectionTimeout = setTimeout(onLongTouch, LONG_TOUCH_DURATION);
+                function onTouchStart(e) {
+                    longTouchDetectionTimeout = setTimeout(onLongTouch, opts.delay);
 					document.addEventListener('touchmove', onTouchMove);
 					document.addEventListener('touchend', onTouchEnd, {passive: false});
 				}
@@ -527,11 +526,13 @@
 
 					// only now start dragging
 					e.preventDefault();
-					onMousedown(e, true);
+                    onMousedown(e, true);
 				}
 
 				var moveExecuted;
-				function onMousedown(e, runMouseMoveHandler) {
+                function onMousedown(e, runMouseMoveHandler) {
+                    if (longTouchDetectionTimeout && !runMouseMoveHandler) return;
+
 					touchFix(e);
 
 					if($controllers[1].sortingInProgress()) return;
