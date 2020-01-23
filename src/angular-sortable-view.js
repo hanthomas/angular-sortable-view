@@ -185,22 +185,29 @@
 						y: reposY
 					});
 
-					var svPartViewRect = svPartView.getBoundingClientRect();
-					if(reposY < mouse.offset.y + svPartViewRect.top - svRect.height / 3) {
-						stopScrolling = false;
-						scrollView(svPartView, -10, 200);
-					} else if(reposY <= mouse.offset.y + svPartViewRect.top) {
-						stopScrolling = false;
-						scrollView(svPartView, -1, 200);
-					} else if(reposY > svPartViewRect.bottom - svRect.height + svRect.height / 3) {
-						stopScrolling = false;
-						scrollView(svPartView, 10, 200);
-					} else if(reposY >= svPartViewRect.bottom - svRect.height) {
-						stopScrolling = false;
-						scrollView(svPartView, 1, 200);
-					} else {
-						stopScrolling = true;
-					}
+                    while (svPartView) {
+                        var svPartViewRect = svPartView.getBoundingClientRect();
+                        if(reposY < mouse.offset.y + svPartViewRect.top - svRect.height / 3) {
+                            stopScrolling = false;
+                            scrollView(svPartView, -10, 200);
+                            break;
+                        } else if(reposY <= mouse.offset.y + svPartViewRect.top) {
+                            stopScrolling = false;
+                            scrollView(svPartView, -1, 200);
+                            break;
+                        } else if(reposY > svPartViewRect.bottom - svRect.height + svRect.height / 3) {
+                            stopScrolling = false;
+                            scrollView(svPartView, 10, 200);
+                            break;
+                        } else if(reposY >= svPartViewRect.bottom - svRect.height) {
+                            stopScrolling = false;
+                            scrollView(svPartView, 1, 200);
+                            break;
+                        } else {
+                            stopScrolling = true;
+                        }
+                        svPartView = svPartView.parentElement;
+                    }
 
 					// ------ manage candidates
 					getSortableElements(mapKey).forEach(function(se, index) {
